@@ -78,7 +78,9 @@ import org.hl7.fhir.utilities.xml.XMLUtil;
 import org.hl7.fhir.utilities.xml.XMLWriter;
 import org.w3c.dom.Document;
 import org.w3c.dom.Node;
+import org.xml.sax.ErrorHandler;
 import org.xml.sax.InputSource;
+import org.xml.sax.SAXParseException;
 import org.xml.sax.XMLReader;
 
 public class XmlParser extends ParserBase {
@@ -97,8 +99,6 @@ public class XmlParser extends ParserBase {
 	public void setSchemaPath(String schemaPath) {
 		this.schemaPath = schemaPath;
 	}
-
-
 
 	public boolean isAllowXsiLocation() {
 		return allowXsiLocation;
@@ -154,6 +154,7 @@ public class XmlParser extends ParserBase {
 				nullTransformer.transform(saxSource, domResult);
 			} else {
 				DocumentBuilder builder = factory.newDocumentBuilder();
+				builder.setErrorHandler(new NullErrorHandler());
 				doc = builder.parse(stream);
 			}
 		} catch (Exception e) {
@@ -296,9 +297,7 @@ public class XmlParser extends ParserBase {
 	private void parseChildren(String path, org.w3c.dom.Element node, Element element) throws FHIRFormatError, FHIRException, IOException, DefinitionException {
 		// this parsing routine retains the original order in a the XML file, to support validation
 		reapComments(node, element);
-
-		String xsiType = XMLUtil.getXsiType(node);
-		List<Property> properties = element.getProperty().getChildProperties(element.getName(), xsiType);
+		List<Property> properties = element.getProperty().getChildProperties(element.getName(), XMLUtil.getXsiType(node));
 
 		String text = XMLUtil.getDirectText(node).trim();
 		int line = line(node, false);
@@ -306,9 +305,21 @@ public class XmlParser extends ParserBase {
 		if (!Utilities.noString(text)) {
 			Property property = getTextProp(properties);
 			if (property != null) {
-				Element n = new Element(property.getName(), property, property.getType(), text).markLocation(line, col);
-				n.setPath(element.getPath()+"."+property.getName());
-				element.getChildren().add(n);
+				if ("ED.data[x]".equals(property.getDefinition().getId()) || (property.getDefinition()!=null && property.getDefinition().getBase()!=null && "ED.data[x]".equals(property.getDefinition().getBase().getPath()))) {
+					if ("B64".equals(node.getAttribute("representation"))) {
+						Element n = new Element("dataBase64Binary", property, "base64Binary", text).markLocation(line, col);
+						n.setPath(element.getPath()+"."+property.getName());
+						element.getChildren().add(n);
+					} else {
+						Element n = new Element("dataString", property, "string", text).markLocation(line, col);
+						n.setPath(element.getPath()+"."+property.getName());
+						element.getChildren().add(n);
+					}
+				} else {
+					Element n = new Element(property.getName(), property, property.getType(), text).markLocation(line, col);
+					n.setPath(element.getPath()+"."+property.getName());
+					element.getChildren().add(n);
+				}
 			}
 			else {
 				Node n = node.getFirstChild();
@@ -416,7 +427,7 @@ public class XmlParser extends ParserBase {
 						boolean ok = true;
 						if (property.isChoice()) {
 							if (property.getDefinition().hasRepresentation(PropertyRepresentation.TYPEATTR)) {
-								xsiType = ((org.w3c.dom.Element) child).getAttributeNS(FormatUtilities.NS_XSI, "type");
+								String xsiType = ((org.w3c.dom.Element) child).getAttributeNS(FormatUtilities.NS_XSI, "type");
 								if (Utilities.noString(xsiType)) {
 									if (ToolingExtensions.hasExtension(property.getDefinition(), "http://hl7.org/fhir/StructureDefinition/elementdefinition-defaulttype")) {
 										xsiType = ToolingExtensions.readStringExtension(property.getDefinition(), "http://hl7.org/fhir/StructureDefinition/elementdefinition-defaulttype");
@@ -442,8 +453,9 @@ public class XmlParser extends ParserBase {
 								parseChildren(npath, (org.w3c.dom.Element) child, n);
 						}
 					}
-				} else
-					logError(ValidationMessage.NO_RULE_DATE, line(child, false), col(child, false), path, IssueType.STRUCTURE, context.formatMessage(I18nConstants.UNDEFINED_ELEMENT_, child.getLocalName()), IssueSeverity.ERROR);
+				} else {
+					logError(ValidationMessage.NO_RULE_DATE, line(child, false), col(child, false), path, IssueType.STRUCTURE, context.formatMessage(I18nConstants.UNDEFINED_ELEMENT_, child.getLocalName(), path), IssueSeverity.ERROR);
+				}
 			} else if (child.getNodeType() == Node.CDATA_SECTION_NODE){
 				logError(ValidationMessage.NO_RULE_DATE, line(child, false), col(child, false), path, IssueType.STRUCTURE, context.formatMessage(I18nConstants.CDATA_IS_NOT_ALLOWED), IssueSeverity.ERROR);
 			} else if (!Utilities.existsInList(child.getNodeType(), 3, 8)) {
@@ -823,4 +835,20 @@ public class XmlParser extends ParserBase {
 		return "?xml-p2?";
 	}
 
+	class NullErrorHandler implements ErrorHandler {
+		@Override
+		public void fatalError(SAXParseException e) {
+			// do nothing
+		}
+
+		@Override
+		public void error(SAXParseException e) {
+			// do nothing
+		}
+
+		@Override
+		public void warning(SAXParseException e) {
+			// do nothing
+		}
+	}
 }

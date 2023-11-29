@@ -63,7 +63,7 @@ public class ValidatorResourceFetcher implements IValidatorResourceFetcher {
 	}
 
 	@Override
-	public boolean resolveURL(IResourceValidator iResourceValidator, Object o, String s, String s1, String s2) throws IOException, FHIRException {
+	public boolean resolveURL(IResourceValidator iResourceValidator, Object o, String s, String s1, String s2, boolean canonical) throws IOException, FHIRException {
 		return true;
 	}
 
