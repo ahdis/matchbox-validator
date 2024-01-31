@@ -40,10 +40,16 @@ import org.hl7.fhir.r5.conformance.profile.ProfileKnowledgeProvider;
 import org.hl7.fhir.r5.conformance.profile.ProfileUtilities;
 import org.hl7.fhir.r5.context.ContextUtilities;
 import org.hl7.fhir.r5.context.IWorkerContext;
-import org.hl7.fhir.r5.context.IWorkerContext.ValidationResult;
 import org.hl7.fhir.r5.elementmodel.Element;
 import org.hl7.fhir.r5.elementmodel.Manager;
 import org.hl7.fhir.r5.elementmodel.Property;
+import org.hl7.fhir.r5.fhirpath.ExpressionNode;
+import org.hl7.fhir.r5.fhirpath.FHIRLexer;
+import org.hl7.fhir.r5.fhirpath.FHIRPathEngine;
+import org.hl7.fhir.r5.fhirpath.TypeDetails;
+import org.hl7.fhir.r5.fhirpath.ExpressionNode.CollectionStatus;
+import org.hl7.fhir.r5.fhirpath.FHIRLexer.FHIRLexerException;
+import org.hl7.fhir.r5.fhirpath.TypeDetails.ProfiledType;
 import org.hl7.fhir.r5.model.*;
 import org.hl7.fhir.r5.model.ConceptMap.ConceptMapGroupComponent;
 import org.hl7.fhir.r5.model.ConceptMap.ConceptMapGroupUnmappedMode;
@@ -55,20 +61,17 @@ import org.hl7.fhir.r5.model.ElementDefinition.TypeRefComponent;
 import org.hl7.fhir.r5.model.Enumerations.ConceptMapRelationship;
 import org.hl7.fhir.r5.model.Enumerations.FHIRVersion;
 import org.hl7.fhir.r5.model.Enumerations.PublicationStatus;
-import org.hl7.fhir.r5.fhirpath.ExpressionNode.CollectionStatus;
 import org.hl7.fhir.r5.model.Narrative.NarrativeStatus;
 import org.hl7.fhir.r5.model.StructureDefinition.StructureDefinitionMappingComponent;
 import org.hl7.fhir.r5.model.StructureDefinition.TypeDerivationRule;
 import org.hl7.fhir.r5.model.StructureMap.*;
-import org.hl7.fhir.r5.fhirpath.TypeDetails.ProfiledType;
 import org.hl7.fhir.r5.model.ValueSet.ValueSetExpansionContainsComponent;
 import org.hl7.fhir.r5.renderers.TerminologyRenderer;
 import org.hl7.fhir.r5.terminologies.expansion.ValueSetExpansionOutcome;
-import org.hl7.fhir.r5.fhirpath.FHIRLexer;
-import org.hl7.fhir.r5.fhirpath.FHIRLexer.FHIRLexerException;
-import org.hl7.fhir.r5.fhirpath.FHIRPathEngine;
+import org.hl7.fhir.r5.terminologies.utilities.ValidationResult;
 import org.hl7.fhir.r5.utils.ToolingExtensions;
 import org.hl7.fhir.utilities.CommaSeparatedStringBuilder;
+import org.hl7.fhir.utilities.FhirPublication;
 import org.hl7.fhir.utilities.Utilities;
 import org.hl7.fhir.utilities.validation.ValidationOptions;
 import org.hl7.fhir.utilities.xhtml.NodeType;
@@ -105,7 +108,7 @@ public class StructureMapUtilities {
 	private ITransformerServices services;
 	private ProfileKnowledgeProvider pkp;
 	private final Map<String, Integer> ids = new HashMap<String, Integer>();
-	private ValidationOptions terminologyServiceOptions = new ValidationOptions();
+	private ValidationOptions terminologyServiceOptions = new ValidationOptions(FhirPublication.R5);
 	private final ProfileUtilities profileUtilities;
 	private boolean exceptionsForChecks = true;
 	private boolean debug;
@@ -1509,15 +1512,15 @@ public class StructureMapUtilities {
 			}
 		}
 
-    // patch https://github.com/ahdis/matchbox/issues/67 actualType is also not prefixed with the canonical URL (see TestObservationCondition)
-    for (StructureMapStructureComponent imp : map.getStructure()) {
-      if (imp.hasAlias() && actualType.equals(imp.getAlias())) {
-        StructureDefinition sd = worker.fetchResource(StructureDefinition.class, imp.getUrl());
-        if (sd != null)
-          actualType = sd.getType();
-        break;
-      }
-    }
+		// patch https://github.com/ahdis/matchbox/issues/67 actualType is also not prefixed with the canonical URL (see TestObservationCondition)
+		for (final StructureMapStructureComponent imp : map.getStructure()) {
+			if (imp.hasAlias() && actualType.equals(imp.getAlias())) {
+				final StructureDefinition sd = worker.fetchResource(StructureDefinition.class, imp.getUrl());
+				if (sd != null)
+					actualType = sd.getType();
+				break;
+			}
+		}
 
 		if (Utilities.isAbsoluteUrl(actualType)) {
 			StructureDefinition sd = worker.fetchResource(StructureDefinition.class, actualType);
@@ -2119,29 +2122,30 @@ public class StructureMapUtilities {
 	 * @param appInfo
 	 * @param map
 	 * @return
-	 * @throws FHIRException
+	 * @throws Exception
 	 */
 	public StructureMapAnalysis analyse(Object appInfo, StructureMap map) throws FHIRException {
 		ids.clear();
 		StructureMapAnalysis result = new StructureMapAnalysis();
 		TransformContext context = new TransformContext(appInfo);
 		VariablesForProfiling vars = new VariablesForProfiling(this, false, false);
-		StructureMapGroupComponent start = map.getGroup().get(0);
-		for (StructureMapGroupInputComponent t : start.getInput()) {
-			PropertyWithType ti = resolveType(map, t.getType(), t.getMode());
-			if (t.getMode() == StructureMapInputMode.SOURCE)
-				vars.add(VariableMode.INPUT, t.getName(), ti);
-			else
-				vars.add(VariableMode.OUTPUT, t.getName(), createProfile(map, result.profiles, ti, start.getName(), start));
+		if (map.hasGroup()) {
+			StructureMapGroupComponent start = map.getGroup().get(0);
+			for (StructureMapGroupInputComponent t : start.getInput()) {
+				PropertyWithType ti = resolveType(map, t.getType(), t.getMode());
+				if (t.getMode() == StructureMapInputMode.SOURCE)
+					vars.add(VariableMode.INPUT, t.getName(), ti);
+				else
+					vars.add(VariableMode.OUTPUT, t.getName(), createProfile(map, result.profiles, ti, start.getName(), start));
+			}
+			result.summary = new XhtmlNode(NodeType.Element, "table").setAttribute("class", "grid");
+			XhtmlNode tr = result.summary.addTag("tr");
+			tr.addTag("td").addTag("b").addText("Source");
+			tr.addTag("td").addTag("b").addText("Target");
+
+			log("Start Profiling Transform " + map.getUrl());
+			analyseGroup("", context, map, vars, start, result);
 		}
-
-		result.summary = new XhtmlNode(NodeType.Element, "table").setAttribute("class", "grid");
-		XhtmlNode tr = result.summary.addTag("tr");
-		tr.addTag("td").addTag("b").addText("Source");
-		tr.addTag("td").addTag("b").addText("Target");
-
-		log("Start Profiling Transform " + map.getUrl());
-		analyseGroup("", context, map, vars, start, result);
 		ProfileUtilities pu = new ProfileUtilities(worker, null, pkp);
 		for (StructureDefinition sd : result.getProfiles())
 			pu.cleanUpDifferential(sd);

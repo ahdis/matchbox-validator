@@ -114,6 +114,7 @@ public class NpmPackage {
 		private String supplements;
 		private String stype;
 		private String derivation;
+		private String content;
 
 		public PackageResourceInformation(String root, JsonObject fi) throws IOException {
 			super();
@@ -125,6 +126,7 @@ public class NpmPackage {
 			supplements = fi.asString("supplements");
 			stype = fi.asString("type");
 			derivation = fi.asString("derivation");
+			content = fi.asString("content");
 		}
 		public String getId() {
 			return id;
@@ -152,6 +154,9 @@ public class NpmPackage {
 		}
 		public String getDerivation() {
 			return derivation;
+		}
+		public String getContent() {
+			return content;
 		}
 
 	}
@@ -1120,7 +1125,7 @@ public class NpmPackage {
 			byte[] cnt = indexer.build().getBytes(StandardCharsets.UTF_8);
 			TextFile.bytesToFile(cnt, Utilities.path(dir.getAbsolutePath(), n, ".index.json"));
 		}
-		byte[] cnt = TextFile.stringToBytes(JsonParser.compose(npm, true), false);
+		byte[] cnt = TextFile.stringToBytes(JsonParser.compose(npm, true));
 		TextFile.bytesToFile(cnt, Utilities.path(dir.getAbsolutePath(), "package", "package.json"));
 	}
 
@@ -1180,7 +1185,7 @@ public class NpmPackage {
 				tar.closeArchiveEntry();
 			}
 		}
-		byte[] cnt = TextFile.stringToBytes(JsonParser.compose(npm, true), false);
+		byte[] cnt = TextFile.stringToBytes(JsonParser.compose(npm, true));
 		TarArchiveEntry entry = new TarArchiveEntry("package/package.json");
 		entry.setSize(cnt.length);
 		tar.putArchiveEntry(entry);

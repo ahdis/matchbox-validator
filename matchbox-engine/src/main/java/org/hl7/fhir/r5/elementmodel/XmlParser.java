@@ -60,6 +60,7 @@ import org.hl7.fhir.r5.elementmodel.Element.SpecialElement;
 import org.hl7.fhir.r5.elementmodel.Manager.FhirFormat;
 import org.hl7.fhir.r5.formats.FormatUtilities;
 import org.hl7.fhir.r5.formats.IParser.OutputStyle;
+import org.hl7.fhir.r5.model.Constants;
 import org.hl7.fhir.r5.model.DateTimeType;
 import org.hl7.fhir.r5.model.ElementDefinition;
 import org.hl7.fhir.r5.model.ElementDefinition.PropertyRepresentation;
@@ -232,7 +233,7 @@ public class XmlParser extends ParserBase {
 
 		Element result = new Element(element.getLocalName(), new Property(context, sd.getSnapshot().getElement().get(0), sd)).setFormat(FhirFormat.XML);
 		result.setPath(element.getLocalName());
-		checkElement(errors, element, path, result.getProperty(), false);
+		checkElement(errors, element, result, path, result.getProperty(), false);
 		result.markLocation(line(element, false), col(element, false));
 		result.setType(element.getLocalName());
 		parseChildren(errors, path, element, result);
@@ -253,10 +254,10 @@ public class XmlParser extends ParserBase {
 			return "sdtc:";
 		if (ns.equals("urn:ihe:pharm"))
 			return "pharm:";
-    if (ns.equals("urn:oid:1.3.6.1.4.1.19376.1.3.2")) {
-        // MATCHBOX
+    	if (ns.equals("urn:oid:1.3.6.1.4.1.19376.1.3.2")) {
+			 // MATCHBOX
           return "lab:";
-    }
+    	}
 		return "?:";
 	}
 
@@ -278,7 +279,7 @@ public class XmlParser extends ParserBase {
 		return true;
 	}
 
-	private void checkElement(List<ValidationMessage> errors, org.w3c.dom.Element element, String path, Property prop, boolean xsiTypeChecked) throws FHIRFormatError {
+	private void checkElement(List<ValidationMessage> errors, org.w3c.dom.Element element, Element e, String path, Property prop, boolean xsiTypeChecked) throws FHIRFormatError {
 		if (policy == ValidationPolicy.EVERYTHING) {
 			if (empty(element) && FormatUtilities.FHIR_NS.equals(element.getNamespaceURI())) // this rule only applies to FHIR Content
 				logError(errors, ValidationMessage.NO_RULE_DATE, line(element, false), col(element, false), path, IssueType.INVALID, context.formatMessage(I18nConstants.ELEMENT_MUST_HAVE_SOME_CONTENT), IssueSeverity.ERROR);
@@ -294,14 +295,32 @@ public class XmlParser extends ParserBase {
 				String xsiType = element.getAttributeNS(FormatUtilities.NS_XSI, "type");
 				if (!Utilities.noString(xsiType)) {
 					String actualType = prop.getXmlTypeName();
-					if (!xsiType.equals(actualType)) {
-						logError(errors, "2023-10-12", line(element, false), col(element, false), path, IssueType.INVALID, context.formatMessage(I18nConstants.XSI_TYPE_WRONG, xsiType, actualType), IssueSeverity.ERROR);
-					} else {
+					if (xsiType.equals(actualType)) {
 						logError(errors, "2023-10-12", line(element, false), col(element, false), path, IssueType.INVALID, context.formatMessage(I18nConstants.XSI_TYPE_UNNECESSARY), IssueSeverity.INFORMATION);
+					} else {
+						StructureDefinition sd = findLegalConstraint(xsiType, actualType);
+						if (sd != null) {
+							e.setType(sd.getType());
+							e.setExplicitType(xsiType);
+						} else {
+							logError(errors, "2023-10-12", line(element, false), col(element, false), path, IssueType.INVALID, context.formatMessage(I18nConstants.XSI_TYPE_WRONG, xsiType, actualType), IssueSeverity.ERROR);
+						}
 					}
 				}
 			}
 		}
+	}
+
+	private StructureDefinition findLegalConstraint(String xsiType, String actualType) {
+		StructureDefinition sdA = context.fetchTypeDefinition(actualType);
+		StructureDefinition sd = context.fetchTypeDefinition(xsiType);
+		while (sd != null) {
+			if (sd == sdA) {
+				return sd;
+			}
+			sd = context.fetchResource(StructureDefinition.class, sd.getBaseDefinition());
+		}
+		return null;
 	}
 
 	public Element parse(List<ValidationMessage> errors, org.w3c.dom.Element base, String type) throws Exception {
@@ -309,7 +328,7 @@ public class XmlParser extends ParserBase {
 		Element result = new Element(base.getLocalName(), new Property(context, sd.getSnapshot().getElement().get(0), sd)).setFormat(FhirFormat.XML).setNativeObject(base);
 		result.setPath(base.getLocalName());
 		String path = "/"+pathPrefix(base.getNamespaceURI())+base.getLocalName();
-		checkElement(errors, base, path, result.getProperty(), false);
+		checkElement(errors, base, result, path, result.getProperty(), false);
 		result.setType(base.getLocalName());
 		parseChildren(errors, path, base, result);
 		result.numberChildren();
@@ -377,11 +396,11 @@ public class XmlParser extends ParserBase {
 				Property property = getAttrProp(properties, attr.getLocalName(), attr.getNamespaceURI());
 				if (property != null) {
 					String av = attr.getNodeValue();
-                    // matchbox-engine: if we are parsing from CDA we need to collapse non string types https://www.w3.org/TR/xmlschema-2/#rf-whiteSpace 
-          // If the attribute type is not CDATA, then the XML processor must further process the normalized attribute value by discarding any leading and trailing space (#x20) characters
-          if ("urn:hl7-org:v3".equals(node.getNamespaceURI()) || "urn:hl7-org:sdtc".equals(node.getNamespaceURI()) || "urn:ihe:pharm".equals(node.getNamespaceURI()) || "urn:oid:1.3.6.1.4.1.19376.1.3.2".equals(node.getNamespaceURI())) {
-            av = av.trim();
-          }
+				   // matchbox-engine: if we are parsing from CDA we need to collapse non string types https://www.w3.org/TR/xmlschema-2/#rf-whiteSpace
+					// If the attribute type is not CDATA, then the XML processor must further process the normalized attribute value by discarding any leading and trailing space (#x20) characters
+					if ("urn:hl7-org:v3".equals(node.getNamespaceURI()) || "urn:hl7-org:sdtc".equals(node.getNamespaceURI()) || "urn:ihe:pharm".equals(node.getNamespaceURI()) || "urn:oid:1.3.6.1.4.1.19376.1.3.2".equals(node.getNamespaceURI())) {
+						av = av.trim();
+					}
 
 					if (ToolingExtensions.hasExtension(property.getDefinition(), ToolingExtensions.EXT_DATE_FORMAT))
 						av = convertForDateFormatFromExternal(ToolingExtensions.readStringExtension(property.getDefinition(), ToolingExtensions.EXT_DATE_FORMAT), av);
@@ -479,7 +498,7 @@ public class XmlParser extends ParserBase {
 							} else
 								n.setType(n.getType());
 						}
-						checkElement(errors, (org.w3c.dom.Element) child, npath, n.getProperty(), xsiTypeChecked);
+						checkElement(errors, (org.w3c.dom.Element) child, n, npath, n.getProperty(), xsiTypeChecked);
 						element.getChildren().add(n);
 						if (ok) {
 							if (property.isResource())
@@ -510,7 +529,7 @@ public class XmlParser extends ParserBase {
 							Element n = new Element(name, property).markLocation(line(child, false), col(child, false)).setFormat(FhirFormat.XML).setNativeObject(child);
 							cgn.getChildren().add(n);
 							n.setPath(element.getPath()+"."+property.getName());
-							checkElement(errors, (org.w3c.dom.Element) child, npath, n.getProperty(), false);
+							checkElement(errors, (org.w3c.dom.Element) child, n, npath, n.getProperty(), false);
 							parseChildren(errors, npath, (org.w3c.dom.Element) child, n);
 						}
 					}
@@ -759,6 +778,11 @@ public class XmlParser extends ParserBase {
 			if (hasTypeAttr(c))
 				return true;
 		}
+		// xsi_type is always allowed on CDA elements. right now, I'm not sure where to indicate this in the model,
+		// so it's just hardcoded here
+		if (e.getType() != null && e.getType().startsWith(Constants.NS_CDA_ROOT)) {
+			return true;
+		}
 		return false;
 	}
 
@@ -800,6 +824,12 @@ public class XmlParser extends ParserBase {
 			if (linkResolver != null)
 				xml.link(linkResolver.resolveProperty(element.getProperty()));
 			xml.enter(element.getProperty().getXmlNamespace(),elementName);
+			if (linkResolver != null && element.getProperty().isReference()) {
+				String ref = linkResolver.resolveReference(getReferenceForElement(element));
+				if (ref != null) {
+					xml.externalLink(ref);
+				}
+			}
 			xml.text(element.getValue());
 			xml.exit(element.getProperty().getXmlNamespace(),elementName);
 		} else if (!element.hasChildren() && !element.hasValue()) {
@@ -830,6 +860,12 @@ public class XmlParser extends ParserBase {
 					xml.link(linkResolver.resolveProperty(element.getProperty()));
 				if (element.hasChildren()) {
 					xml.enter(element.getProperty().getXmlNamespace(), elementName);
+					if (linkResolver != null && element.getProperty().isReference()) {
+						String ref = linkResolver.resolveReference(getReferenceForElement(element));
+						if (ref != null) {
+							xml.externalLink(ref);
+						}
+					}
 					for (Element child : element.getChildren())
 						composeElement(xml, child, child.getName(), false);
 					xml.exit(element.getProperty().getXmlNamespace(),elementName);
@@ -854,10 +890,10 @@ public class XmlParser extends ParserBase {
 						xml.link(linkResolver.resolveType(child.getType()));
 					if (ToolingExtensions.hasExtension(child.getProperty().getDefinition(), ToolingExtensions.EXT_DATE_FORMAT))
 						av = convertForDateFormatToExternal(ToolingExtensions.readStringExtension(child.getProperty().getDefinition(), ToolingExtensions.EXT_DATE_FORMAT), av);
-          // MATCHBOX PATCH: adjusting it for pharm
+               // MATCHBOX PATCH: adjusting it for pharm
 					xml.attribute(child.getProperty().getXmlName(), av);
-        }
-      }
+				}
+			}
 			if (linkResolver != null)
 				xml.link(linkResolver.resolveProperty(element.getProperty()));
 			if (!xml.namespaceDefined(element.getProperty().getXmlNamespace())) {
@@ -865,10 +901,17 @@ public class XmlParser extends ParserBase {
 				xml.namespace(element.getProperty().getXmlNamespace(), abbrev);
 			}
 			xml.enter(element.getProperty().getXmlNamespace(), elementName);
+
 			if (!root && element.getSpecial() != null) {
 				if (linkResolver != null)
 					xml.link(linkResolver.resolveProperty(element.getProperty()));
 				xml.enter(element.getProperty().getXmlNamespace(),element.getType());
+			}
+			if (linkResolver != null && element.getProperty().isReference()) {
+				String ref = linkResolver.resolveReference(getReferenceForElement(element));
+				if (ref != null) {
+					xml.externalLink(ref);
+				}
 			}
 			for (Element child : element.getChildren()) {
 				if (wantCompose(element.getPath(), child)) {
