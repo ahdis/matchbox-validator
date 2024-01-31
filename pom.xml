@@ -38,7 +38,7 @@
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
-        <java.version>11</java.version>
+        <java.version>17</java.version>
         <fhir.core.version>6.2.15</fhir.core.version>
         <hapi.fhir.version>6.10.3</hapi.fhir.version>
 
