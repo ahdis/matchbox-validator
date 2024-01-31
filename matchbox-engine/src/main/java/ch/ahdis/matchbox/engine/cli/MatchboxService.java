@@ -12,31 +12,20 @@ import org.hl7.fhir.exceptions.FHIRException;
 import org.hl7.fhir.r5.context.ContextUtilities;
 import org.hl7.fhir.r5.context.SimpleWorkerContext;
 import org.hl7.fhir.r5.context.SystemOutLoggingService;
-import org.hl7.fhir.r5.context.TerminologyCache;
 import org.hl7.fhir.r5.elementmodel.Manager;
 import org.hl7.fhir.r5.elementmodel.Manager.FhirFormat;
 import org.hl7.fhir.r5.formats.IParser;
 import org.hl7.fhir.r5.model.Bundle;
-import org.hl7.fhir.r5.model.CanonicalResource;
-import org.hl7.fhir.r5.model.CodeSystem;
-import org.hl7.fhir.r5.model.ConceptMap;
 import org.hl7.fhir.r5.model.OperationOutcome;
 import org.hl7.fhir.r5.model.Resource;
 import org.hl7.fhir.r5.model.StructureDefinition;
-import org.hl7.fhir.r5.model.StructureDefinition.StructureDefinitionKind;
 import org.hl7.fhir.r5.model.StructureMap;
-import org.hl7.fhir.r5.model.ValueSet;
-import org.hl7.fhir.r5.renderers.spreadsheets.CodeSystemSpreadsheetGenerator;
-import org.hl7.fhir.r5.renderers.spreadsheets.ConceptMapSpreadsheetGenerator;
-import org.hl7.fhir.r5.renderers.spreadsheets.StructureDefinitionSpreadsheetGenerator;
-import org.hl7.fhir.r5.renderers.spreadsheets.ValueSetSpreadsheetGenerator;
 import org.hl7.fhir.r5.terminologies.CodeSystemUtilities;
 import org.hl7.fhir.utilities.TextFile;
 import org.hl7.fhir.utilities.TimeTracker;
 import org.hl7.fhir.utilities.Utilities;
 import org.hl7.fhir.utilities.VersionUtilities;
 import org.hl7.fhir.utilities.npm.FilesystemPackageCacheManager;
-import org.hl7.fhir.utilities.npm.ToolsVersion;
 import org.hl7.fhir.utilities.validation.ValidationMessage;
 import org.hl7.fhir.validation.IgLoader;
 import org.hl7.fhir.validation.ValidationEngine;
@@ -52,10 +41,7 @@ import org.hl7.fhir.validation.cli.renderers.DefaultRenderer;
 import org.hl7.fhir.validation.cli.renderers.ESLintCompactRenderer;
 import org.hl7.fhir.validation.cli.renderers.NativeRenderer;
 import org.hl7.fhir.validation.cli.renderers.ValidationOutputRenderer;
-import org.hl7.fhir.validation.cli.services.HTMLOutputGenerator;
-import org.hl7.fhir.validation.cli.services.IPackageInstaller;
-import org.hl7.fhir.validation.cli.services.SessionCache;
-import org.hl7.fhir.validation.cli.services.StandAloneValidatorFetcher;
+import org.hl7.fhir.validation.cli.services.*;
 import org.hl7.fhir.validation.cli.utils.EngineMode;
 import org.hl7.fhir.validation.cli.utils.VersionSourceInformation;
 
@@ -74,13 +60,13 @@ public class MatchboxService {
   public static final String CURRENT_DEFAULT_VERSION = "4.0";
   public static final String CURRENT_DEFAULT_FULL_VERSION = "4.0.1";
 
-  private final SessionCache sessionCache;
+  private final PassiveExpiringSessionCache sessionCache;
 
   public MatchboxService() {
-    sessionCache = new SessionCache();
+    sessionCache = new PassiveExpiringSessionCache();
   }
 
-  protected MatchboxService(SessionCache cache) {
+  protected MatchboxService(final PassiveExpiringSessionCache cache) {
     this.sessionCache = cache;
   }
 
@@ -370,7 +356,8 @@ public class MatchboxService {
 
   public String initializeValidator(CliContext cliContext, String definitions, TimeTracker tt, String sessionId) throws Exception {
     tt.milestone();
-    sessionCache.removeExpiredSessions();
+	 // getSessionIds() does the same thing as sessionCache.removeExpiredSessions() (protected access)
+    sessionCache.getSessionIds();
     if (!sessionCache.sessionExists(sessionId)) {
       if (sessionId != null) {
         System.out.println("No such cached session exists for session id " + sessionId + ", re-instantiating validator.");
