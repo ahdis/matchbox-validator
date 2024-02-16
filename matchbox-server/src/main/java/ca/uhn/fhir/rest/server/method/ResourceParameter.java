@@ -48,7 +48,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.nio.charset.Charset;
 import java.util.Collection;
-import javax.annotation.Nonnull;
+import jakarta.annotation.Nonnull;
 import java.util.StringTokenizer;
 
 import static org.apache.commons.lang3.StringUtils.isBlank;

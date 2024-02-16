@@ -6,9 +6,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
-import javax.servlet.http.HttpServletRequest;
-
 import ca.uhn.fhir.jpa.rp.r4.ImplementationGuideResourceProvider;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import org.hl7.fhir.instance.model.api.IIdType;
 import org.hl7.fhir.r4.model.ImplementationGuide;
 import org.hl7.fhir.r4.model.OperationOutcome;
@@ -83,7 +83,7 @@ public class ImplementationGuideProviderR4 extends ImplementationGuideResourcePr
 
 	@Override
 	public MethodOutcome delete(HttpServletRequest theRequest, IIdType theResource, String theConditional,
-			RequestDetails theRequestDetails) {
+										 RequestDetails theRequestDetails) {
 		ImplementationGuide guide = new ImplementationGuide();
 		int pos = theResource.getIdPart().lastIndexOf("-");
 		String version = theResource.getIdPart().substring(pos + 1);
@@ -268,8 +268,8 @@ public class ImplementationGuideProviderR4 extends ImplementationGuideResourcePr
 	@Override
 	@Search(allowUnknownParams = true)
 	public ca.uhn.fhir.rest.api.server.IBundleProvider search(
-			javax.servlet.http.HttpServletRequest theServletRequest,
-			javax.servlet.http.HttpServletResponse theServletResponse,
+			HttpServletRequest theServletRequest,
+			HttpServletResponse theServletResponse,
 
 			ca.uhn.fhir.rest.api.server.RequestDetails theRequestDetails,
 

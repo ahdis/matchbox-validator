@@ -42,7 +42,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import javax.annotation.Nullable;
+import jakarta.annotation.Nullable;
 
 import static org.apache.commons.lang3.StringUtils.isNotBlank;
 
